@@ -1,0 +1,234 @@
+{
+    "model": "TransFusionL",
+    "date": "20-07-2022",
+    "ver": 1,
+    "note": "",
+    "device": "cuda:0",
+    "experiments": "/home/stpc/experiments/",
+    "resume_training": false,
+    "resume_from": 54,
+    "data":
+    {
+        "num_classes": 4,
+        "test_cfg":
+        {
+            "out_size_factor": 1,
+            "grid_size": [400, 400]
+        },
+        "jrdb":
+        {
+            "location": "/home/stpc/clean_data/jrdb",
+            "geometry": 
+            {
+                "y_min": -20.0,
+                "y_max": 20.0,
+                "x_min": -20.0,
+                "x_max": 20.0,
+                "z_min": -2.0,
+                "z_max": 1.5,
+                "x_res": 0.1,
+                "y_res": 0.1,
+                "z_res": 0.1,
+                "input_shape": [400, 400, 35],
+                "label_shape": [400, 400, 6]
+            },
+            "objects":
+            {
+                "Car": 0, 
+                "Pedestrian": 1, 
+                "Bicycle": 2,
+                "Motorcycle": 2,
+                "Scooter": 2,
+                "Truck": 3,
+                "Bus": 3
+            }
+        },
+        "small_robot":
+        {
+            "location": "/home/stpc/clean_data/small_robot",
+            "geometry": 
+            {
+                "y_min": -20.0,
+                "y_max": 20.0,
+                "x_min": -20.0,
+                "x_max": 20.0,
+                "z_min": -1.5,
+                "z_max": 2.0,
+                "x_res": 0.1,
+                "y_res": 0.1,
+                "z_res": 0.1,
+                "input_shape": [400, 400, 35],
+                "label_shape": [400, 400, 6]
+            },
+            "objects":
+            {
+                "Car": 0, 
+                "Pedestrian": 1, 
+                "Bicycle": 2,
+                "Motorcycle": 2,
+                "Scooter": 2,
+                "Truck": 3,
+                "Bus": 3
+            }
+        },
+        "wego":
+        {
+            "location": "/home/stpc/clean_data/wego",
+            "geometry": 
+            {
+                "y_min": -20.0,
+                "y_max": 20.0,
+                "x_min": -20.0,
+                "x_max": 20.0,
+                "z_min": -2.5,
+                "z_max": 1.0,
+                "x_res": 0.1,
+                "y_res": 0.1,
+                "z_res": 0.1,
+                "input_shape": [400, 400, 35],
+                "label_shape": [400, 400, 6]
+            },
+            "objects":
+            {
+                "Car": 0, 
+                "Pedestrian": 1, 
+                "Bicycle": 2,
+                "Motorcycle": 2,
+                "Scooter": 2,
+                "Truck": 3,
+                "Bus": 3
+            }
+        },
+        "kitti":
+        {
+            "location": "/home/stpc/clean_data/kitti",
+            "geometry": 
+            {
+                "y_min": -20.0,
+                "y_max": 20.0,
+                "x_min": -20.0,
+                "x_max": 20.0,
+                "z_min": -2.5,
+                "z_max": 1.0,
+                "x_res": 0.1,
+                "y_res": 0.1,
+                "z_res": 0.1,
+                "input_shape": [400, 400, 35],
+                "label_shape": [400, 400, 6]
+            },
+            "objects":
+            {
+                "Car": 0, 
+                "Pedestrian": 1, 
+                "Person_sitting": 1, 
+                "Cyclist": 2,
+                "Van": 3,
+                "Truck": 3,
+                "Tram": 3
+            }
+
+        },
+        "lyft":
+        {
+            "location": "/home/stpc/clean_data/lyft",
+            "geometry": 
+            {
+                "y_min": -20.0,
+                "y_max": 20.0,
+                "x_min": -20.0,
+                "x_max": 20.0,
+                "z_min": -2.5,
+                "z_max": 1.0,
+                "x_res": 0.1,
+                "y_res": 0.1,
+                "z_res": 0.1,
+                "input_shape": [400, 400, 35],
+                "label_shape": [400, 400, 6]
+            },
+            "objects":
+            {
+                "car": 0, 
+                "pedestrian": 1, 
+                "bicycle": 2,
+                "motorcycle": 2,
+                "bus": 3,
+                "truck": 3,
+                "emergency_vehicle": 3,
+                "other_vehicle": 3
+            }
+        },
+        "nuscenes":
+        {
+            "location": "/home/stpc/clean_data/nuscenes",
+            "geometry": 
+            {
+                "y_min": -20.0,
+                "y_max": 20.0,
+                "x_min": -20.0,
+                "x_max": 20.0,
+                "z_min": -2.5,
+                "z_max": 1.0,
+                "x_res": 0.1,
+                "y_res": 0.1,
+                "z_res": 0.1,
+                "input_shape": [400, 400, 35],
+                "label_shape": [400, 400, 6]
+            },
+            "objects":
+            {
+                "car": 0, 
+                "pedestrian": 1, 
+                "bicycle": 2,
+                "motorcycle": 2,
+                "bus": 3,
+                "construction_vehicle": 3,
+                "trailer": 3,
+                "truck": 3
+            }
+        }
+    },
+    "train": 
+    {
+        "batch_size": 2,
+        "learning_rate": 0.00003,
+        "use_differential_learning": false,
+        "differential_learning_rate": [0.00001, 0.000001],
+        "epochs": 1500,
+        "momentum": 0.9,
+        "weight_decay": 0.0001,
+        "lr_decay_at": [150, 200, 1000],
+        "save_every": 1,
+        "data": "/home/stpc/clean_data/list/reasonable_train.txt"
+        
+    },
+    "val": 
+    {
+        "batch_size": 1,
+        "data": "/home/stpc/clean_data/list/reasonable_val.txt",
+        "val_every": 1
+    },
+    
+    "augmentation":
+    {
+        "p": 0.5,
+        "rotation":
+        {
+            "use": true,
+            "limit_angle": 20,
+            "p": 1
+        },
+        "scaling":
+        {
+            "use": true,
+            "range": [0.95, 1.05],
+            "p": 1
+        },
+        "translation":
+        {
+            "use": true,
+            "scale": 0.4,
+            "p": 1
+        }
+    }
+
+}
