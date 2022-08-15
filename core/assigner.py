@@ -1,5 +1,6 @@
 import torch
-
+from utils.iou_calculator import compute_iou
+from scipy.optimize import linear_sum_assignment
 
 class FocalLossCost:
     """FocalLossCost.
@@ -53,7 +54,6 @@ class FocalLossCost:
             1 - self.alpha) * cls_pred.pow(self.gamma)
         pos_cost = -(cls_pred + self.eps).log() * self.alpha * (
             1 - cls_pred).pow(self.gamma)
-        print(cls_pred)
         cls_cost = pos_cost[:, gt_labels] - neg_cost[:, gt_labels]
         return cls_cost * self.weight
 
@@ -102,12 +102,13 @@ class BBoxBEVL1Cost(object):
     def __init__(self, weight):
         self.weight = weight
 
-    def __call__(self, bboxes, gt_bboxes, train_cfg):
-        pc_start = bboxes.new(train_cfg['point_cloud_range'][0:2])
-        pc_range = bboxes.new(train_cfg['point_cloud_range'][3:5]) - bboxes.new(train_cfg['point_cloud_range'][0:2])
+    def __call__(self, boxes, gt_boxes, geometry):
+        pc_start = boxes.new([geometry['x_min'], geometry["y_min"]])
+        pc_range = boxes.new([geometry["x_max"], geometry["y_max"]]) - pc_start
+        
         # normalize the box center to [0, 1]
-        normalized_bboxes_xy = (bboxes[:, :2] - pc_start) / pc_range
-        normalized_gt_bboxes_xy = (gt_bboxes[:, :2] - pc_start) / pc_range
+        normalized_bboxes_xy = (boxes[:, :2] - pc_start) / pc_range
+        normalized_gt_bboxes_xy = (gt_boxes[:, :2] - pc_start) / pc_range
         reg_cost = torch.cdist(normalized_bboxes_xy, normalized_gt_bboxes_xy, p=1)
         return reg_cost * self.weight
 
@@ -120,6 +121,34 @@ class IoU3DCost(object):
         return iou_cost * self.weight
 
 
+class HungarianAssigner():
+    def __init__(self):
+        self.cls_cost = FocalLossCost(weight = 0.15, alpha = 0.25, gamma = 2)
+        self.reg_cost = BBoxBEVL1Cost(weight = 0.25)
+        self.iou_cost = IoU3DCost(weight = 0.25)
+
+
+    def assign(self, boxes, gt_boxes, gt_labels, cls_pred, geometry):
+        # compute the weighted costs
+        # see mmdetection/mmdet/core/bbox/match_costs/match_cost.py
+        cls_cost = self.cls_cost(cls_pred[0].T, gt_labels)
+        reg_cost = self.reg_cost(boxes, gt_boxes, geometry)
+        iou = compute_iou(boxes.detach().cpu().numpy(), gt_boxes.detach().cpu().numpy())
+        iou_cost = self.iou_cost(torch.from_numpy(iou))
+
+        # weighted sum of above three costs
+        cost = cls_cost.detach().cpu() + reg_cost.detach().cpu() + iou_cost
+
+        # do Hungarian matching on CPU using linear_sum_assignment
+
+        matched_row_inds, matched_col_inds = linear_sum_assignment(cost)
+        matched_row_inds = torch.from_numpy(matched_row_inds).to(boxes.device)
+        matched_col_inds = torch.from_numpy(matched_col_inds).to(boxes.device)
+
+        return matched_row_inds, matched_col_inds
+        
+
+
 if __name__ == "__main__":
     cls_cost = FocalLossCost()
 
@@ -128,5 +157,5 @@ if __name__ == "__main__":
                         [7, 8, 9],
                         [10, 11, 12]])
     gt_labels = torch.tensor([1, 1, 0, 1, 1])
-    cost = cls_cost(inp, gt_labels)
-    print(cost)
+    
+    print(inp.new([1, 2]))

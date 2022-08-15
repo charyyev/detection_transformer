@@ -8,7 +8,9 @@ import json
 
 from core.torchplus import Sequential, Empty, change_default_args
 from core.models.transfusion_head import TransFusionHead
-from core.datasets.dataset import Dataset, collate_fn
+from core.datasets.dataset import Dataset
+from core.bbox_coder import BBoxCoder
+from core.assigner import HungarianAssigner
 
 def conv3x3(in_planes, out_planes, stride=1, bias=False):
     """3x3 convolution with padding"""
@@ -132,10 +134,12 @@ class TransFusion(nn.Module):
 
 
 class SetCriterion(nn.Module):
-    def __init__(self):
-        pass
-    
-    def get_targets(self, pred, gt_boxes):
+    def __init__(self, cfg):
+        self.box_coder = BBoxCoder(cfg)
+        self.assigner = HungarianAssigner()
+        self.cfg = cfg
+
+    def get_targets(self, pred, gt_boxes, data_types):
         list_of_pred_dict = []
         for batch_idx in range(len(gt_boxes)):
             pred_dict = {}
@@ -145,7 +149,10 @@ class SetCriterion(nn.Module):
     
         assert len(gt_boxes) == len(list_of_pred_dict)
 
-    def get_targets_single(self, pred, gt_boxes):
+        for i in range(len(gt_boxes)):
+            self.get_targets_single(list_of_pred_dict[i], gt_boxes[i], data_types[i])
+
+    def get_targets_single(self, pred, gt_boxes, data_type):
         num_proposals = pred['center'].shape[-1]
 
         # get pred boxes, carefully ! donot change the network outputs
@@ -154,45 +161,17 @@ class SetCriterion(nn.Module):
         dim = copy.deepcopy(pred['dim'].detach())
         rot = copy.deepcopy(pred['rot'].detach())
         
-        boxes_dict = self.bbox_coder.decode(score, rot, dim, center)  # decode the prediction to real world metric bbox
-        bboxes_tensor = boxes_dict[0]['bboxes']
-        gt_bboxes_tensor = gt_bboxes_3d.tensor.to(score.device)
-        # each layer should do label assign seperately.
-        if self.auxiliary:
-            num_layer = self.num_decoder_layers
-        else:
-            num_layer = 1
+        boxes_dict = self.box_coder.decode(score, rot, dim, center, data_type)  # decode the prediction to real world metric bbox
+        gt_boxes, gt_labels = self.box_coder.convert_format(gt_boxes)
+        boxes = boxes_dict[0]['boxes'].to(score.device)
 
-        assign_result_list = []
-        for idx_layer in range(num_layer):
-            bboxes_tensor_layer = bboxes_tensor[self.num_proposals * idx_layer:self.num_proposals * (idx_layer + 1), :]
-            score_layer = score[..., self.num_proposals * idx_layer:self.num_proposals * (idx_layer + 1)]
+        assigned_rows, assigned_cols = self.assigner.assign(boxes, gt_boxes, gt_labels, score, self.cfg[data_type]["geometry"])
 
-            if self.train_cfg.assigner.type == 'HungarianAssigner3D':
-                assign_result = self.bbox_assigner.assign(bboxes_tensor_layer, gt_bboxes_tensor, gt_labels_3d, score_layer, self.train_cfg)
-            elif self.train_cfg.assigner.type == 'HeuristicAssigner':
-                assign_result = self.bbox_assigner.assign(bboxes_tensor_layer, gt_bboxes_tensor, None, gt_labels_3d, self.query_labels[batch_idx])
-            else:
-                raise NotImplementedError
-            assign_result_list.append(assign_result)
-
-        # combine assign result of each layer
-        assign_result_ensemble = AssignResult(
-            num_gts=sum([res.num_gts for res in assign_result_list]),
-            gt_inds=torch.cat([res.gt_inds for res in assign_result_list]),
-            max_overlaps=torch.cat([res.max_overlaps for res in assign_result_list]),
-            labels=torch.cat([res.labels for res in assign_result_list]),
-        )
-        sampling_result = self.bbox_sampler.sample(assign_result_ensemble, bboxes_tensor, gt_bboxes_tensor)
-        pos_inds = sampling_result.pos_inds
-        neg_inds = sampling_result.neg_inds
-        assert len(pos_inds) + len(neg_inds) == num_proposals
 
         # create target for loss computation
         bbox_targets = torch.zeros([num_proposals, self.bbox_coder.code_size]).to(center.device)
         bbox_weights = torch.zeros([num_proposals, self.bbox_coder.code_size]).to(center.device)
-        ious = assign_result_ensemble.max_overlaps
-        ious = torch.clamp(ious, min=0.0, max=1.0)
+
         labels = bboxes_tensor.new_zeros(num_proposals, dtype=torch.long)
         label_weights = bboxes_tensor.new_zeros(num_proposals, dtype=torch.long)
 
@@ -258,15 +237,15 @@ if __name__ == "__main__":
     data_file = "/home/stpc/clean_data/list/train.txt"
 
     model = TransFusion(config["data"])
-    criterion = SetCriterion()
+    criterion = SetCriterion(config["data"])
     dataset = Dataset(data_file, config["data"], config["augmentation"])
-    data_loader = DataLoader(dataset, shuffle=False, batch_size=4, collate_fn = collate_fn)
+    data_loader = DataLoader(dataset, shuffle=False, batch_size=4, collate_fn = dataset.collate_fn)
     for data in data_loader:
         voxel = data["voxel"]
         boxes = data["boxes"]
-
+        data_types = data["data_type"]
         pred = model(voxel)
-        criterion.get_targets(pred, boxes)
+        criterion.get_targets(pred, boxes, data_types)
 
         break
 

@@ -51,6 +51,8 @@ class Dataset(Dataset):
         if self.task == "train" and boxes.shape[0] != 0:
             points, boxes[:, 1:] = self.augment(points, boxes[:, 1:8])
 
+        boxes = torch.from_numpy(boxes)
+
         scan = self.voxelize(points, self.config[data_type]["geometry"])
         scan = torch.from_numpy(scan)
         scan = scan.permute(2, 0, 1)
@@ -183,21 +185,21 @@ class Dataset(Dataset):
         self.data_type_list = data_type_list
 
 
-def collate_fn(batch):
-    boxes = []
-    data_types = []
-    voxels = []
-    
-    for data in batch:
-        boxes.append(data["boxes"])
-        data_types.append(data["data_type"])
-        voxels.append(data["voxel"].unsqueeze(0))
+    def collate_fn(self, batch):
+        boxes = []
+        data_types = []
+        voxels = []
+        
+        for data in batch:
+            boxes.append(data["boxes"])
+            data_types.append(data["data_type"])
+            voxels.append(data["voxel"].unsqueeze(0))
 
-    return {
-        "voxel": torch.cat(voxels),
-        "boxes": boxes,
-        "data_type": data_types
-    }
+        return {
+            "voxel": torch.cat(voxels),
+            "boxes": boxes,
+            "data_type": data_types
+        }
 
 
 if __name__ == "__main__":
@@ -207,7 +209,7 @@ if __name__ == "__main__":
         config = json.load(f)
 
     dataset = Dataset(data_file, config["data"], config["augmentation"])
-    data_loader = DataLoader(dataset, shuffle=False, batch_size=4, collate_fn = collate_fn)
+    data_loader = DataLoader(dataset, shuffle=False, batch_size=4, collate_fn = dataset.collate_fn)
 
     for data in data_loader:
         boxes = data["boxes"]
