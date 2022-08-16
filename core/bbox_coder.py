@@ -37,7 +37,7 @@ class BBoxCoder():
         """ Encode bboxes
 
         Args:
-            dst_boxes: Nx8 (cls, h, w, l, x, y, z, yaw)
+            dst_boxes: Nx5 (x, y, w, l, yaw)
             data_type (string): type of dataset
         Returns:
             torch.Tensor: Nx6 tensor of targets (x_feat, y_feat, log(w), log(l), cos(yaw), sin(yaw))
@@ -45,13 +45,13 @@ class BBoxCoder():
 
         geometry = self.cfg[data_type]["geometry"]
         targets = torch.zeros([dst_boxes.shape[0], 6])
-        targets[:, 0] = (dst_boxes[:, 4] - geometry["x_min"]) / (self.out_size_factor * geometry["x_res"])
-        targets[:, 1] = (dst_boxes[:, 5] - geometry["y_min"]) / (self.out_size_factor * geometry["y_res"])
+        targets[:, 0] = (dst_boxes[:, 0] - geometry["x_min"]) / (self.out_size_factor * geometry["x_res"])
+        targets[:, 1] = (dst_boxes[:, 1] - geometry["y_min"]) / (self.out_size_factor * geometry["y_res"])
         
-        targets[:, 2] = dst_boxes[:, 1].log()
-        targets[:, 3] = dst_boxes[:, 2].log()
-        targets[:, 4] = torch.sin(dst_boxes[:, 7])
-        targets[:, 5] = torch.cos(dst_boxes[:, 7])
+        targets[:, 2] = dst_boxes[:, 2].log()
+        targets[:, 3] = dst_boxes[:, 3].log()
+        targets[:, 4] = torch.sin(dst_boxes[:, 4])
+        targets[:, 5] = torch.cos(dst_boxes[:, 4])
        
         return targets
 

@@ -5,10 +5,10 @@ import os
 import matplotlib.pyplot as plt
 import math
 import json
-import time
 
-from utils.preprocess import trasform_label2metric, get_points_in_a_rotated_box
+
 from utils.transform import Random_Rotation, Random_Scaling, OneOf, Random_Translation
+from utils.gaussian import gaussian_radius, draw_heatmap_gaussian
 
 from torch.utils.data import DataLoader
 
@@ -21,6 +21,7 @@ class Dataset(Dataset):
 
         self.config = config
         self.task = task
+        self.num_classes = self.config["num_classes"]
         self.transforms = self.get_transforms(aug_config)
         self.augment = OneOf(self.transforms, aug_config["p"])
        
@@ -52,6 +53,7 @@ class Dataset(Dataset):
             points, boxes[:, 1:] = self.augment(points, boxes[:, 1:8])
 
         boxes = torch.from_numpy(boxes)
+        heatmap = self.create_heatmap(boxes, data_type)
 
         scan = self.voxelize(points, self.config[data_type]["geometry"])
         scan = torch.from_numpy(scan)
@@ -66,12 +68,14 @@ class Dataset(Dataset):
                     "cls_list": class_list,
                     "points": points,
                     "boxes": boxes,
+                    "heatmap": heatmap,
                     "dtype": data_type
                 }   
 
         return {"voxel": scan, 
                 "boxes": boxes,
-                "data_type": data_type
+                "data_type": data_type,
+                "heatmap": heatmap
             }
 
             
@@ -141,6 +145,34 @@ class Dataset(Dataset):
 
         return np.array(boxes)
 
+    def create_heatmap(self, boxes, data_type):
+        geometry = self.config[data_type]["geometry"]
+        grid_size = torch.tensor(self.config['test_cfg']['grid_size'])
+        out_size_factor = self.config["test_cfg"]["out_size_factor"]
+        
+        feature_map_size = torch.div(grid_size[:2], out_size_factor, rounding_mode='trunc')  # [x_len, y_len]
+        heatmap = boxes.new_zeros(self.num_classes, feature_map_size[1], feature_map_size[0])
+        for idx in range(boxes.shape[0]):
+            width = boxes[idx][2]
+            length = boxes[idx][3]
+            width = width / geometry["x_res"] / out_size_factor
+            length = length / geometry["y_res"] / out_size_factor
+            if width > 0 and length > 0:
+                radius = gaussian_radius((length, width), min_overlap=self.config['gaussian_overlap'])
+                radius = max(self.config['min_radius'], int(radius))
+                x, y = boxes[idx][4], boxes[idx][5]
+
+                coor_x = (x - geometry["x_min"]) / geometry["x_res"] / out_size_factor
+                coor_y = (y - geometry["y_min"]) / geometry["y_res"] / out_size_factor
+
+                center = torch.tensor([coor_x, coor_y], dtype=torch.float32)
+                center_int = center.to(torch.int32)
+                draw_heatmap_gaussian(heatmap[int(boxes[idx][0])], center_int, radius)
+
+        return heatmap
+
+
+
 
     def read_bbox(self, boxes):
         corner_list = []
@@ -189,15 +221,18 @@ class Dataset(Dataset):
         boxes = []
         data_types = []
         voxels = []
+        heatmaps = []
         
         for data in batch:
             boxes.append(data["boxes"])
             data_types.append(data["data_type"])
             voxels.append(data["voxel"].unsqueeze(0))
+            heatmaps.append(data["heatmap"].unsqueeze(0))
 
         return {
             "voxel": torch.cat(voxels),
             "boxes": boxes,
+            "heatmap": torch.cat(heatmaps),
             "data_type": data_types
         }
 
@@ -214,8 +249,9 @@ if __name__ == "__main__":
     for data in data_loader:
         boxes = data["boxes"]
         voxel = data["voxel"]
-        print(len(boxes))
+        heatmap = data["heatmap"]
         print(voxel.shape)
+        print(heatmap[heatmap > 0])
         #voxel = voxel.permute(1, 2, 0)
         #print(voxel.shape)
         #print(torch.sum(voxel, axis = 2))

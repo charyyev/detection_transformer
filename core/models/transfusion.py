@@ -11,6 +11,10 @@ from core.models.transfusion_head import TransFusionHead
 from core.datasets.dataset import Dataset
 from core.bbox_coder import BBoxCoder
 from core.assigner import HungarianAssigner
+from core.losses.focal_loss import FocalLoss
+from core.losses.general_losses import l1_loss
+from core.losses.gaussian_focal_loss import GaussianFocalLoss
+
 
 def conv3x3(in_planes, out_planes, stride=1, bias=False):
     """3x3 convolution with padding"""
@@ -135,9 +139,25 @@ class TransFusion(nn.Module):
 
 class SetCriterion(nn.Module):
     def __init__(self, cfg):
+        super(SetCriterion, self).__init__()
         self.box_coder = BBoxCoder(cfg)
         self.assigner = HungarianAssigner()
+        
+        self.cls_loss_fn = FocalLoss(use_sigmoid=True, reduction="mean", loss_weight=1.0)
+        self.heatmap_loss_fn = GaussianFocalLoss(reduction="mean", loss_weight=1.0)
+        
         self.cfg = cfg
+        self.num_classes = cfg["num_classes"]
+
+
+
+    def forward(self, pred, gt_boxes, heatmap, data_types):
+        label_targets, box_targets, masks = self.get_targets(pred, gt_boxes, data_types)
+        print(label_targets.shape)
+        print(pred[0]["heatmap"].shape)
+        cls_loss = self.cls_loss_fn(pred[0]["heatmap"], label_targets)
+        print(cls_loss)
+
 
     def get_targets(self, pred, gt_boxes, data_types):
         list_of_pred_dict = []
@@ -149,8 +169,21 @@ class SetCriterion(nn.Module):
     
         assert len(gt_boxes) == len(list_of_pred_dict)
 
+
         for i in range(len(gt_boxes)):
-            self.get_targets_single(list_of_pred_dict[i], gt_boxes[i], data_types[i])
+            label, box_target, mask = self.get_targets_single(list_of_pred_dict[i], gt_boxes[i], data_types[i])
+            if i == 0:
+                labels = label.unsqueeze(0)
+                box_targets = box_target.unsqueeze(0)
+                masks = mask.unsqueeze(0)
+            else:
+                labels = torch.cat((labels, label.unsqueeze(0)), dim = 0)
+                box_targets = torch.cat((box_targets, box_target.unsqueeze(0)), dim = 0)
+                masks = torch.cat((masks, mask.unsqueeze(0)), dim = 0)
+        
+        return labels, box_targets, masks
+            
+
 
     def get_targets_single(self, pred, gt_boxes, data_type):
         num_proposals = pred['center'].shape[-1]
@@ -169,66 +202,21 @@ class SetCriterion(nn.Module):
 
 
         # create target for loss computation
-        bbox_targets = torch.zeros([num_proposals, self.bbox_coder.code_size]).to(center.device)
-        bbox_weights = torch.zeros([num_proposals, self.bbox_coder.code_size]).to(center.device)
+        box_targets = torch.zeros([num_proposals, 6]).to(center.device)
+        labels = boxes.new_zeros(num_proposals, dtype=torch.long)
+        mask = boxes.new_zeros(num_proposals, dtype = torch.long)
+        
+        labels += self.num_classes
 
-        labels = bboxes_tensor.new_zeros(num_proposals, dtype=torch.long)
-        label_weights = bboxes_tensor.new_zeros(num_proposals, dtype=torch.long)
 
-        if gt_labels_3d is not None:  # default label is -1
-            labels += self.num_classes
+        #both pos and neg have classification loss, only pos has regression and iou loss
+        if len(assigned_rows) > 0:
+            box_targets[assigned_rows] = self.box_coder.encode(gt_boxes, data_type)[assigned_cols]
+            labels[assigned_rows] = gt_labels[assigned_cols]
+            mask[assigned_rows] = 1
 
-        # both pos and neg have classification loss, only pos has regression and iou loss
-        if len(pos_inds) > 0:
-            pos_bbox_targets = self.bbox_coder.encode(sampling_result.pos_gt_bboxes)
+        return labels, box_targets, mask
 
-            bbox_targets[pos_inds, :] = pos_bbox_targets
-            bbox_weights[pos_inds, :] = 1.0
-
-            if gt_labels_3d is None:
-                labels[pos_inds] = 1
-            else:
-                labels[pos_inds] = gt_labels_3d[sampling_result.pos_assigned_gt_inds]
-            if self.train_cfg.pos_weight <= 0:
-                label_weights[pos_inds] = 1.0
-            else:
-                label_weights[pos_inds] = self.train_cfg.pos_weight
-
-        if len(neg_inds) > 0:
-            label_weights[neg_inds] = 1.0
-
-        # # compute dense heatmap targets
-        if self.initialize_by_heatmap:
-            device = labels.device
-            gt_bboxes_3d = torch.cat([gt_bboxes_3d.gravity_center, gt_bboxes_3d.tensor[:, 3:]], dim=1).to(device)
-            grid_size = torch.tensor(self.train_cfg['grid_size'])
-            pc_range = torch.tensor(self.train_cfg['point_cloud_range'])
-            voxel_size = torch.tensor(self.train_cfg['voxel_size'])
-            feature_map_size = grid_size[:2] // self.train_cfg['out_size_factor']  # [x_len, y_len]
-            heatmap = gt_bboxes_3d.new_zeros(self.num_classes, feature_map_size[1], feature_map_size[0])
-            for idx in range(len(gt_bboxes_3d)):
-                width = gt_bboxes_3d[idx][3]
-                length = gt_bboxes_3d[idx][4]
-                width = width / voxel_size[0] / self.train_cfg['out_size_factor']
-                length = length / voxel_size[1] / self.train_cfg['out_size_factor']
-                if width > 0 and length > 0:
-                    radius = gaussian_radius((length, width), min_overlap=self.train_cfg['gaussian_overlap'])
-                    radius = max(self.train_cfg['min_radius'], int(radius))
-                    x, y = gt_bboxes_3d[idx][0], gt_bboxes_3d[idx][1]
-
-                    coor_x = (x - pc_range[0]) / voxel_size[0] / self.train_cfg['out_size_factor']
-                    coor_y = (y - pc_range[1]) / voxel_size[1] / self.train_cfg['out_size_factor']
-
-                    center = torch.tensor([coor_x, coor_y], dtype=torch.float32, device=device)
-                    center_int = center.to(torch.int32)
-                    draw_heatmap_gaussian(heatmap[gt_labels_3d[idx]], center_int, radius)
-
-            mean_iou = ious[pos_inds].sum() / max(len(pos_inds), 1)
-            return labels[None], label_weights[None], bbox_targets[None], bbox_weights[None], ious[None], int(pos_inds.shape[0]), float(mean_iou), heatmap[None]
-
-        else:
-            mean_iou = ious[pos_inds].sum() / max(len(pos_inds), 1)
-            return labels[None], label_weights[None], bbox_targets[None], bbox_weights[None], ious[None], int(pos_inds.shape[0]), float(mean_iou)
 
 if __name__ == "__main__":
     with open("/home/stpc/proj/detection_transformer/configs/base.json", 'r') as f:
@@ -244,8 +232,9 @@ if __name__ == "__main__":
         voxel = data["voxel"]
         boxes = data["boxes"]
         data_types = data["data_type"]
+        heatmap = data["heatmap"]
         pred = model(voxel)
-        criterion.get_targets(pred, boxes, data_types)
+        criterion(pred, boxes, heatmap, data_types)
 
         break
 

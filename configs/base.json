@@ -10,6 +10,8 @@
     "data":
     {
         "num_classes": 4,
+        "gaussian_overlap": 0.1,
+        "min_radius": 2,
         "test_cfg":
         {
             "out_size_factor": 1,
