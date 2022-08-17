@@ -52,6 +52,20 @@ def weight_reduce_loss(loss, weight=None, reduction='mean', avg_factor=None):
             raise ValueError('avg_factor can not be used with reduction="sum"')
     return loss
 
+def clip_sigmoid(x, eps=1e-4):
+    """Sigmoid function for input feature.
+
+    Args:
+        x (torch.Tensor): Input feature map with the shape of [B, N, H, W].
+        eps (float): Lower bound of the range to be clamped to. Defaults
+            to 1e-4.
+
+    Returns:
+        torch.Tensor: Feature map after sigmoid.
+    """
+    y = torch.clamp(x.sigmoid_(), min=eps, max=1 - eps)
+    return y
+
 
 def voxel_to_points(voxel, geometry):
     x_min = geometry["x_min"]

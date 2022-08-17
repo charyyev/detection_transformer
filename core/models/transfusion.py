@@ -14,6 +14,7 @@ from core.assigner import HungarianAssigner
 from core.losses.focal_loss import FocalLoss
 from core.losses.general_losses import l1_loss
 from core.losses.gaussian_focal_loss import GaussianFocalLoss
+from utils.utils import clip_sigmoid
 
 
 def conv3x3(in_planes, out_planes, stride=1, bias=False):
@@ -153,11 +154,22 @@ class SetCriterion(nn.Module):
 
     def forward(self, pred, gt_boxes, heatmap, data_types):
         label_targets, box_targets, masks = self.get_targets(pred, gt_boxes, data_types)
-        print(label_targets.shape)
-        print(pred[0]["heatmap"].shape)
         cls_loss = self.cls_loss_fn(pred[0]["heatmap"], label_targets)
-        print(cls_loss)
+        heatmap_loss = self.heatmap_loss_fn(clip_sigmoid(pred[0]["dense_heatmap"]), heatmap, avg_factor=max(heatmap.eq(1).float().sum().item(), 1))
+        center_loss = l1_loss(pred[0]["center"], box_targets[:, 0:2, :], masks, loss_weight=0.25)
+        dim_loss = l1_loss(pred[0]["center"], box_targets[:, 2:4, :], masks, loss_weight=0.25)
+        rot_loss = l1_loss(pred[0]["center"], box_targets[:, 4:6, :], masks, loss_weight=0.25)
 
+        loss = cls_loss + heatmap_loss + center_loss + dim_loss + rot_loss
+        loss_dict = {"loss": loss, 
+                     "cls": cls_loss.item(), 
+                     "heatmap": heatmap_loss.item(), 
+                     "center": center_loss.item(), 
+                     "dim": dim_loss.item(), 
+                     "rot": rot_loss.item()}
+
+        return loss_dict
+        
 
     def get_targets(self, pred, gt_boxes, data_types):
         list_of_pred_dict = []
@@ -181,7 +193,7 @@ class SetCriterion(nn.Module):
                 box_targets = torch.cat((box_targets, box_target.unsqueeze(0)), dim = 0)
                 masks = torch.cat((masks, mask.unsqueeze(0)), dim = 0)
         
-        return labels, box_targets, masks
+        return labels, box_targets.permute(0, 2, 1), masks
             
 
 

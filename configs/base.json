@@ -192,7 +192,7 @@
     "train": 
     {
         "batch_size": 2,
-        "learning_rate": 0.00003,
+        "learning_rate": 0.003,
         "use_differential_learning": false,
         "differential_learning_rate": [0.00001, 0.000001],
         "epochs": 1500,

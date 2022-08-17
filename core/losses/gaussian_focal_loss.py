@@ -1,7 +1,7 @@
 import torch.nn as nn
+from utils.utils import weight_reduce_loss
 
-
-def gaussian_focal_loss(pred, gaussian_target, alpha=2.0, gamma=4.0):
+def gaussian_focal_loss(pred, gaussian_target, weight, alpha=2.0, gamma=4.0, reduction = None, avg_factor = None):
     """`Focal Loss <https://arxiv.org/abs/1708.02002>`_ for targets in gaussian
     distribution.
 
@@ -19,7 +19,7 @@ def gaussian_focal_loss(pred, gaussian_target, alpha=2.0, gamma=4.0):
     neg_weights = (1 - gaussian_target).pow(gamma)
     pos_loss = -(pred + eps).log() * (1 - pred).pow(alpha) * pos_weights
     neg_loss = -(1 - pred + eps).log() * pred.pow(alpha) * neg_weights
-    return pos_loss + neg_loss
+    return weight_reduce_loss(pos_loss + neg_loss, weight, reduction, avg_factor)
 
 
 class GaussianFocalLoss(nn.Module):
