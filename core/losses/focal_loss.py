@@ -36,6 +36,7 @@ def py_sigmoid_focal_loss(pred,
                     (1 - target)) * pt.pow(gamma)
     loss = F.binary_cross_entropy_with_logits(
         pred, target, reduction='none') * focal_weight
+
     if weight is not None:
         if weight.shape != loss.shape:
             if weight.size(0) == loss.size(0):
@@ -174,7 +175,6 @@ class FocalLoss(nn.Module):
                 target = F.one_hot(target, num_classes=num_classes + 1)
                 target = target.permute(0, 2, 1)
                 target = target[:, :num_classes]
-                
                 calculate_loss_func = py_sigmoid_focal_loss
 
             loss_cls = self.loss_weight * calculate_loss_func(

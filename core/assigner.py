@@ -131,6 +131,10 @@ class HungarianAssigner():
     def assign(self, boxes, gt_boxes, gt_labels, cls_pred, geometry):
         # compute the weighted costs
         # see mmdetection/mmdet/core/bbox/match_costs/match_cost.py
+
+        if gt_labels.shape[0] == 0:
+            return [], []
+
         cls_cost = self.cls_cost(cls_pred[0].T, gt_labels)
         reg_cost = self.reg_cost(boxes, gt_boxes, geometry)
         iou = compute_iou(boxes.detach().cpu().numpy(), gt_boxes.detach().cpu().numpy())
@@ -140,8 +144,8 @@ class HungarianAssigner():
         cost = cls_cost.detach().cpu() + reg_cost.detach().cpu() + iou_cost
 
         # do Hungarian matching on CPU using linear_sum_assignment
-
         matched_row_inds, matched_col_inds = linear_sum_assignment(cost)
+
         matched_row_inds = torch.from_numpy(matched_row_inds).to(boxes.device)
         matched_col_inds = torch.from_numpy(matched_col_inds).to(boxes.device)
 
@@ -150,12 +154,24 @@ class HungarianAssigner():
 
 
 if __name__ == "__main__":
-    cls_cost = FocalLossCost()
+    boxes = torch.tensor([[0, 0, 1, 1, 0],
+                          [1, 0, 1, 1, 0],
+                          [2, 0, 1, 1, 0],
+                          [3, 0, 1, 1, 0]])
 
-    inp = torch.tensor([[1, 2, 3],
-                        [4, 5, 6],
-                        [7, 8, 9],
-                        [10, 11, 12]])
-    gt_labels = torch.tensor([1, 1, 0, 1, 1])
+    cls_pred = torch.tensor([[1, 0], [0, 1], [0, 1], [0,1]]).T.unsqueeze(0)
+
+    gt_boxes = torch.tensor([[0, 1, 1, 1, 0],
+                             [1, 1, 1, 1, 0 ]])
+                             
+    gt_labels = torch.tensor([1, 0])
+    geometry = {"x_min": 0, "y_min": 0, "x_max": 1, "y_max": 1}
+
+    assigner = HungarianAssigner()
+    matched_rows, matched_cols = assigner.assign(boxes, gt_boxes, gt_labels, cls_pred, geometry)
+    print(matched_rows)
+    print(matched_cols)
+
     
-    print(inp.new([1, 2]))
+    
+    

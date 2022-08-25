@@ -4,6 +4,7 @@ from core.models.transfusion import TransFusion, SetCriterion
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 import torch
+import torch.nn as nn
 import os
 import time
 from tqdm import tqdm
@@ -31,9 +32,10 @@ class TrainAgent():
         lr_decay_at = self.config["train"]["lr_decay_at"]
         
         self.model = TransFusion(self.config["data"])
-
+        self.model = nn.DataParallel(self.model)
         self.model.to(self.device)
         self.criterion = SetCriterion(self.config["data"])
+        self.criterion.eval()
 
         if self.config["train"]["use_differential_learning"]:
             dif_learning_rate = self.config["train"]["differential_learning_rate"]
@@ -51,8 +53,8 @@ class TrainAgent():
         self.model.train()
         for data in tqdm(self.train_loader):
             voxel = data["voxel"].to(self.device)
-            boxes = data["boxes"].to(self.device)
-            data_type = data["data_type"].to(self.device)
+            boxes = data["boxes"]
+            data_type = data["data_type"]
             heatmap = data["heatmap"].to(self.device)
             
             self.optimizer.zero_grad()
@@ -99,7 +101,7 @@ class TrainAgent():
 
             if epoch % self.config["train"]["save_every"] == 0:
                 path = os.path.join(self.checkpoints_dir, str(epoch) + "epoch")
-                torch.save(self.model.state_dict(), path)
+                torch.save(self.model.module.state_dict(), path)
 
             if (epoch + 1) % self.config["val"]["val_every"] == 0:
                 self.validate(epoch)
@@ -114,8 +116,8 @@ class TrainAgent():
         with torch.no_grad():
             for data in self.val_loader:
                 voxel = data["voxel"].to(self.device)
-                boxes = data["boxes"].to(self.device)
-                data_type = data["data_type"].to(self.device)
+                boxes = data["boxes"]
+                data_type = data["data_type"]
                 heatmap = data["heatmap"].to(self.device)
 
                 pred = self.model(voxel)
@@ -134,7 +136,7 @@ class TrainAgent():
         self.model.train()
 
         for key in total_loss.keys():
-            self.writer.add_scalar(key, total_loss[key] / len(self.train_loader), epoch)
+            self.writer.add_scalar(key, total_loss[key] / len(self.val_loader), epoch)
 
         print("Epoch {}|Time {}|Validation Loss: {:.5f}".format(
             epoch, time.time() - start_time, total_loss["loss"] / len(self.val_loader)))
@@ -142,7 +144,7 @@ class TrainAgent():
         if total_loss["loss"] / len(self.val_loader) < self.prev_val_loss:
             self.prev_val_loss = total_loss["loss"] / len(self.val_loader)
             path = os.path.join(self.best_checkpoints_dir, str(epoch) + "epoch")
-            torch.save(self.model.state_dict(), path)
+            torch.save(self.model.module.state_dict(), path)
             
 
 

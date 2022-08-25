@@ -6,6 +6,8 @@ from vispy.scene import visuals
 from vispy.scene.cameras import TurntableCamera
 from vispy.scene import SceneCanvas
 import json
+import torch
+import torch.nn.functional as F
 
 from core.datasets.dataset import Dataset
 from utils.utils import voxel_to_points
@@ -45,7 +47,6 @@ class Vis():
 
     def get3D_corners(self,  bbox):
         h, w, l, x, y, z, yaw = bbox[1:]
-        print(bbox)
 
         corners = []
         front = l / 2
@@ -134,14 +135,56 @@ class Vis():
         colors = color_range[scaled_intensity]
         return colors
 
+    def create_2D_grid(self, x_size, y_size):
+        meshgrid = [[0, x_size - 1, x_size], [0, y_size - 1, y_size]]
+        batch_y, batch_x = torch.meshgrid(*[torch.linspace(it[0], it[1], it[2]) for it in meshgrid], indexing = "xy")
+        batch_x = batch_x + 0.5
+        batch_y = batch_y + 0.5
+        coord_base = torch.cat([batch_x[None], batch_y[None]], dim=0)[None]
+        coord_base = coord_base.view(1, 2, -1).permute(0, 2, 1)
+        return coord_base
+
 
     def update_scan(self):
         data = self.dataset[self.index]
         voxel = data["voxel"].permute(2, 1, 0).numpy()
         boxes = data["boxes"]
-        heatmap = data["heatmap"]
+        heatmap = data["heatmap"].unsqueeze(0)
         data_type = data["data_type"]
 
+        nms_kernel_size = 3
+        padding = nms_kernel_size // 2
+        batch_size = 1
+        num_proposals = 128
+        geometry = dataset.config[data_type]["geometry"]
+
+        x_size = 400
+        y_size = 400
+        self.bev_pos = self.create_2D_grid(x_size, y_size)
+        bev_pos = self.bev_pos.repeat(batch_size, 1, 1)
+
+        local_max = torch.zeros_like(heatmap)
+        # equals to nms radius = voxel_size * out_size_factor * kenel_size
+        local_max_inner = F.max_pool2d(heatmap, kernel_size=nms_kernel_size, stride=1, padding=0)
+        local_max[:, :, padding:(-padding), padding:(-padding)] = local_max_inner
+        
+        ## for Pedestrian
+        local_max[:, 1, ] = F.max_pool2d(heatmap[:, 1], kernel_size=1, stride=1, padding=0)
+        
+        heatmap = heatmap * (heatmap == local_max)
+        heatmap = heatmap.contiguous().view(batch_size, heatmap.shape[1], -1)
+
+        # top num_proposals among all classes
+        top_proposals = heatmap.view(batch_size, -1).argsort(dim=-1, descending=True)[..., :num_proposals]
+        top_scores, _ = heatmap.view(batch_size, -1).sort(dim=-1, descending=True)
+
+        top_proposals_class = torch.div(top_proposals, heatmap.shape[-1], rounding_mode='trunc')
+        top_proposals_index = top_proposals % heatmap.shape[-1]
+        query_labels = top_proposals_class[0]
+
+        # add category embedding
+        query_pos = bev_pos.gather(index=top_proposals_index[:, None, :].permute(0, 2, 1).expand(-1, -1, bev_pos.shape[-1]), dim=1)[0]
+        #print(query_pos)
         points = voxel_to_points(voxel, dataset.config[data_type]["geometry"])
 
         colors = np.array([0, 1, 1])
@@ -153,19 +196,25 @@ class Vis():
                             size=1.0)
         corners = []
         cls_list = []
-        for i in range(boxes.shape[0]):
-            box = boxes[i]
-            corners.append(self.get3D_corners(box.numpy()))
-            cls_list.append(int(box[0]))
+
+        for i in range(query_pos.shape[0]):
+            pos = query_pos[i]
+            label = query_labels[i]
+            center_x = pos[0]  * geometry["x_res"] + geometry["x_min"]
+            center_y = pos[1]  * geometry["y_res"] + geometry["y_min"]
+            box = [1, 1, 0.5, 0.5, center_x, center_y, 0, 0]
+            corners.append(self.get3D_corners(box))
+            cls_list.append(int(label))
         self.plot_boxes(cls_list, corners)
         
         
-        img = np.max(heatmap.numpy(), 0)
+        img = np.max(data["heatmap"].numpy(), 0)
+        #img = data["heatmap"][1].numpy()
+        #print(img[img > 0])
         #img1 = np.copy(img)
         #img1[reg_mask == 1] = 1
         #img = np.concatenate((img, img1), axis = 0)
-        print(img.shape)
-        self.image.set_data(np.swapaxes(img, 0, 1))
+        self.image.set_data(img)
 
 
 

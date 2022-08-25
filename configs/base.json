@@ -1,12 +1,12 @@
 {
     "model": "TransFusionL",
-    "date": "20-07-2022",
-    "ver": 1,
-    "note": "",
-    "device": "cuda:0",
+    "date": "23-08-2022",
+    "ver": 2,
+    "note": "overfit",
+    "device": "cuda",
     "experiments": "/home/stpc/experiments/",
     "resume_training": false,
-    "resume_from": 54,
+    "resume_from": 1,
     "data":
     {
         "num_classes": 4,
@@ -191,7 +191,7 @@
     },
     "train": 
     {
-        "batch_size": 2,
+        "batch_size": 1,
         "learning_rate": 0.003,
         "use_differential_learning": false,
         "differential_learning_rate": [0.00001, 0.000001],
@@ -200,14 +200,14 @@
         "weight_decay": 0.0001,
         "lr_decay_at": [150, 200, 1000],
         "save_every": 1,
-        "data": "/home/stpc/clean_data/list/reasonable_train.txt"
+        "data": "/home/stpc/clean_data/list/overfit1.txt"
         
     },
     "val": 
     {
         "batch_size": 1,
-        "data": "/home/stpc/clean_data/list/reasonable_val.txt",
-        "val_every": 1
+        "data": "/home/stpc/clean_data/list/overfit1.txt",
+        "val_every": 1000
     },
     
     "augmentation":
@@ -215,19 +215,19 @@
         "p": 0.5,
         "rotation":
         {
-            "use": true,
+            "use": false,
             "limit_angle": 20,
             "p": 1
         },
         "scaling":
         {
-            "use": true,
+            "use": false,
             "range": [0.95, 1.05],
             "p": 1
         },
         "translation":
         {
-            "use": true,
+            "use": false,
             "scale": 0.4,
             "p": 1
         }

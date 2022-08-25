@@ -157,10 +157,12 @@ class SetCriterion(nn.Module):
         cls_loss = self.cls_loss_fn(pred[0]["heatmap"], label_targets)
         heatmap_loss = self.heatmap_loss_fn(clip_sigmoid(pred[0]["dense_heatmap"]), heatmap, avg_factor=max(heatmap.eq(1).float().sum().item(), 1))
         center_loss = l1_loss(pred[0]["center"], box_targets[:, 0:2, :], masks, loss_weight=0.25)
-        dim_loss = l1_loss(pred[0]["center"], box_targets[:, 2:4, :], masks, loss_weight=0.25)
-        rot_loss = l1_loss(pred[0]["center"], box_targets[:, 4:6, :], masks, loss_weight=0.25)
-
+        dim_loss = l1_loss(pred[0]["dim"], box_targets[:, 2:4, :], masks, loss_weight=0.25)
+        rot_loss = l1_loss(pred[0]["rot"], box_targets[:, 4:6, :], masks, loss_weight=0.25)
         loss = cls_loss + heatmap_loss + center_loss + dim_loss + rot_loss
+
+        #loss =  heatmap_loss
+        #return {"loss": loss}
         loss_dict = {"loss": loss, 
                      "cls": cls_loss.item(), 
                      "heatmap": heatmap_loss.item(), 
@@ -205,11 +207,12 @@ class SetCriterion(nn.Module):
         center = copy.deepcopy(pred['center'].detach())
         dim = copy.deepcopy(pred['dim'].detach())
         rot = copy.deepcopy(pred['rot'].detach())
-        
+
         boxes_dict = self.box_coder.decode(score, rot, dim, center, data_type)  # decode the prediction to real world metric bbox
         gt_boxes, gt_labels = self.box_coder.convert_format(gt_boxes)
         boxes = boxes_dict[0]['boxes'].to(score.device)
-
+        gt_boxes = gt_boxes.to(score.device)
+        gt_labels = gt_labels.to(score.device)
         assigned_rows, assigned_cols = self.assigner.assign(boxes, gt_boxes, gt_labels, score, self.cfg[data_type]["geometry"])
 
 
@@ -220,13 +223,12 @@ class SetCriterion(nn.Module):
         
         labels += self.num_classes
 
-
         #both pos and neg have classification loss, only pos has regression and iou loss
         if len(assigned_rows) > 0:
             box_targets[assigned_rows] = self.box_coder.encode(gt_boxes, data_type)[assigned_cols]
             labels[assigned_rows] = gt_labels[assigned_cols]
             mask[assigned_rows] = 1
-
+    
         return labels, box_targets, mask
 
 
@@ -234,12 +236,12 @@ if __name__ == "__main__":
     with open("/home/stpc/proj/detection_transformer/configs/base.json", 'r') as f:
         config = json.load(f)
 
-    data_file = "/home/stpc/clean_data/list/train.txt"
+    data_file = "/home/stpc/clean_data/list/overfit1.txt"
 
     model = TransFusion(config["data"])
     criterion = SetCriterion(config["data"])
     dataset = Dataset(data_file, config["data"], config["augmentation"])
-    data_loader = DataLoader(dataset, shuffle=False, batch_size=4, collate_fn = dataset.collate_fn)
+    data_loader = DataLoader(dataset, shuffle=False, batch_size=1, collate_fn = dataset.collate_fn)
     for data in data_loader:
         voxel = data["voxel"]
         boxes = data["boxes"]

@@ -61,15 +61,14 @@ class Dataset(Dataset):
 
 
         if self.task == "val":
-            class_list, boxes = self.read_bbox(boxes)
+            #class_list, boxes = self.read_bbox(boxes)
     
             return {"voxel": scan,
-                    "boxes": boxes, 
-                    "cls_list": class_list,
+                    "boxes": boxes,
                     "points": points,
                     "boxes": boxes,
                     "heatmap": heatmap,
-                    "dtype": data_type
+                    "data_type": data_type
                 }   
 
         return {"voxel": scan, 
@@ -141,7 +140,8 @@ class Dataset(Dataset):
                 if name in list(object_list.keys()):
                     bbox.append(object_list[name])
                     bbox.extend([float(e) for e in entry[1:]])
-                    boxes.append(bbox)
+                    if self.box_in_range(bbox, data_type):
+                        boxes.append(bbox)
 
         return np.array(boxes)
 
@@ -165,13 +165,20 @@ class Dataset(Dataset):
                 coor_x = (x - geometry["x_min"]) / geometry["x_res"] / out_size_factor
                 coor_y = (y - geometry["y_min"]) / geometry["y_res"] / out_size_factor
 
-                center = torch.tensor([coor_x, coor_y], dtype=torch.float32)
+                center = torch.tensor([coor_y, coor_x], dtype=torch.float32)
                 center_int = center.to(torch.int32)
                 draw_heatmap_gaussian(heatmap[int(boxes[idx][0])], center_int, radius)
 
         return heatmap
 
 
+    def box_in_range(self, box, data_type):
+        x, y = box[4:6]
+        geometry = self.config[data_type]["geometry"]
+
+        if (x > geometry["x_min"]) and (x < geometry["x_max"]) and (y > geometry["y_min"]) and (y < geometry["y_max"]):
+            return True
+        return False
 
 
     def read_bbox(self, boxes):
@@ -222,6 +229,7 @@ class Dataset(Dataset):
         data_types = []
         voxels = []
         heatmaps = []
+        points = []
         
         for data in batch:
             boxes.append(data["boxes"])
@@ -229,12 +237,19 @@ class Dataset(Dataset):
             voxels.append(data["voxel"].unsqueeze(0))
             heatmaps.append(data["heatmap"].unsqueeze(0))
 
-        return {
+            if "points" in data:
+                points.append(data["points"])
+
+        return_dict = {
             "voxel": torch.cat(voxels),
             "boxes": boxes,
             "heatmap": torch.cat(heatmaps),
             "data_type": data_types
         }
+        if len(points) > 0:
+            return_dict["points"] = points
+        
+        return return_dict
 
 
 if __name__ == "__main__":
