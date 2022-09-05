@@ -1,4 +1,5 @@
 import torch.nn as nn
+import torch
 from utils.utils import weight_reduce_loss
 
 def gaussian_focal_loss(pred, gaussian_target, weight, alpha=2.0, gamma=4.0, reduction = None, avg_factor = None):
@@ -20,6 +21,33 @@ def gaussian_focal_loss(pred, gaussian_target, weight, alpha=2.0, gamma=4.0, red
     pos_loss = -(pred + eps).log() * (1 - pred).pow(alpha) * pos_weights
     neg_loss = -(1 - pred + eps).log() * pred.pow(alpha) * neg_weights
     return weight_reduce_loss(pos_loss + neg_loss, weight, reduction, avg_factor)
+
+def slow_neg_loss(pred, gt):
+    '''focal loss from CornerNet'''
+    pos_inds = gt.eq(1)
+    neg_inds = gt.lt(1)
+
+    neg_weights = torch.pow(1 - gt[neg_inds], 4)
+
+    loss = 0
+    pos_pred = pred[pos_inds]
+    neg_pred = pred[neg_inds]
+
+    neg_pred[neg_pred == 1] = 1 - 1e-7
+    pos_pred[pos_pred == 0] = 1e-7
+    
+    pos_loss = torch.log(pos_pred) * torch.pow(1 - pos_pred, 2)
+    neg_loss = torch.log(1 - neg_pred) * torch.pow(neg_pred, 2) * neg_weights
+
+    num_pos  = pos_inds.float().sum()
+    pos_loss = pos_loss.sum()
+    neg_loss = neg_loss.sum()
+
+    if pos_pred.nelement() == 0:
+        loss = loss - neg_loss
+    else:
+        loss = loss - (pos_loss + neg_loss) / num_pos
+    return loss
 
 
 class GaussianFocalLoss(nn.Module):
@@ -73,12 +101,13 @@ class GaussianFocalLoss(nn.Module):
         assert reduction_override in (None, 'none', 'mean', 'sum')
         reduction = (
             reduction_override if reduction_override else self.reduction)
-        loss_reg = self.loss_weight * gaussian_focal_loss(
-            pred,
-            target,
-            weight,
-            alpha=self.alpha,
-            gamma=self.gamma,
-            reduction=reduction,
-            avg_factor=avg_factor)
+        loss_reg = self.loss_weight * slow_neg_loss(pred, target)
+        # loss_reg = self.loss_weight * gaussian_focal_loss(
+        #     pred,
+        #     target,
+        #     weight,
+        #     alpha=self.alpha,
+        #     gamma=self.gamma,
+        #     reduction=reduction,
+        #     avg_factor=avg_factor)
         return loss_reg

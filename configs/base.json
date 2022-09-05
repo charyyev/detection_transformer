@@ -1,8 +1,8 @@
 {
     "model": "TransFusionL",
-    "date": "23-08-2022",
-    "ver": 2,
-    "note": "overfit",
+    "date": "01-08-2022",
+    "ver": 1,
+    "note": "demo",
     "device": "cuda",
     "experiments": "/home/stpc/experiments/",
     "resume_training": false,
@@ -191,23 +191,23 @@
     },
     "train": 
     {
-        "batch_size": 1,
+        "batch_size": 2,
         "learning_rate": 0.003,
         "use_differential_learning": false,
         "differential_learning_rate": [0.00001, 0.000001],
         "epochs": 1500,
         "momentum": 0.9,
         "weight_decay": 0.0001,
-        "lr_decay_at": [150, 200, 1000],
+        "lr_decay_at": [25, 50, 75],
         "save_every": 1,
-        "data": "/home/stpc/clean_data/list/overfit1.txt"
+        "data": "/home/stpc/clean_data/list/mostly_nuscenes_train.txt"
         
     },
     "val": 
     {
-        "batch_size": 1,
-        "data": "/home/stpc/clean_data/list/overfit1.txt",
-        "val_every": 1000
+        "batch_size": 2,
+        "data": "/home/stpc/clean_data/list/mostly_nuscenes_val.txt",
+        "val_every": 1
     },
     
     "augmentation":
@@ -215,19 +215,19 @@
         "p": 0.5,
         "rotation":
         {
-            "use": false,
+            "use": true,
             "limit_angle": 20,
             "p": 1
         },
         "scaling":
         {
-            "use": false,
+            "use": true,
             "range": [0.95, 1.05],
             "p": 1
         },
         "translation":
         {
-            "use": false,
+            "use": true,
             "scale": 0.4,
             "p": 1
         }

@@ -130,7 +130,6 @@ class HungarianAssigner():
 
     def assign(self, boxes, gt_boxes, gt_labels, cls_pred, geometry):
         # compute the weighted costs
-        # see mmdetection/mmdet/core/bbox/match_costs/match_cost.py
 
         if gt_labels.shape[0] == 0:
             return [], []

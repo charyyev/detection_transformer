@@ -88,13 +88,15 @@ class TransformerDecoderLayer(nn.Module):
 
         query = query.permute(2, 0, 1)
         key = key.permute(2, 0, 1)
-        
+        #print(query[0:2, 0, :])
+       
         if not self.cross_only:
             q = k = v = self.with_pos_embed(query, query_pos_embed)
             query2 = self.self_attn(q, k, value=v)[0]
+            #print(query2[0:2, 0, :])
             query = query + self.dropout1(query2)
             query = self.norm1(query)
-
+        
         query2 = self.multihead_attn(query=self.with_pos_embed(query, query_pos_embed),
                                      key=self.with_pos_embed(key, key_pos_embed),
                                      value=self.with_pos_embed(key, key_pos_embed), attn_mask=attn_mask)[0]
@@ -312,7 +314,7 @@ def multi_head_attention_forward(query,  ## type: Tensor
 
     qkv_same = torch.equal(query, key) and torch.equal(key, value)
     kv_same = torch.equal(key, value)
-
+    
     tgt_len, bsz, embed_dim = query.size()
     assert embed_dim == embed_dim_to_check
     assert list(query.size()) == [tgt_len, bsz, embed_dim]
@@ -326,6 +328,7 @@ def multi_head_attention_forward(query,  ## type: Tensor
         if qkv_same:
             # self-attention
             q, k, v = F.linear(query, in_proj_weight, in_proj_bias).chunk(3, dim=-1)
+
 
         elif kv_same:
             # encoder-decoder attention
@@ -402,7 +405,7 @@ def multi_head_attention_forward(query,  ## type: Tensor
             k = F.linear(key, k_proj_weight_non_opt, in_proj_bias)
             v = F.linear(value, v_proj_weight_non_opt, in_proj_bias)
     q = q * scaling
-
+    
     if bias_k is not None and bias_v is not None:
         if static_k is None and static_v is None:
             k = torch.cat([k, bias_k.repeat(1, bsz, 1)])
@@ -480,6 +483,8 @@ def multi_head_attention_forward(query,  ## type: Tensor
     attn_output_weights = F.dropout(attn_output_weights, p=dropout_p, training=training)
     
     attn_output = torch.bmm(attn_output_weights, v)
+    print(attn_output_weights.shape)
+    print(v.shape)
     assert list(attn_output.size()) == [bsz * num_heads, tgt_len, head_dim]
     attn_output = attn_output.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
     attn_output = F.linear(attn_output, out_proj_weight, out_proj_bias)
@@ -538,7 +543,7 @@ class FFN(nn.Module):
                 [B, 512, 128, 128].
         Returns:
             dict[str: torch.Tensor]: contains the following keys:
-                -reg （torch.Tensor): 2D regression value with the \
+                -reg (torch.Tensor): 2D regression value with the \
                     shape of [B, 2, H, W].
                 -height (torch.Tensor): Height value with the \
                     shape of [B, 1, H, W].
@@ -729,7 +734,7 @@ class TransFusionHead(nn.Module):
             # Transformer Decoder Layer
             # :param query: B C Pq    :param query_pos: B Pq 3/6
             query_feat = self.decoder[i](query_feat, lidar_feat_flatten, query_pos, bev_pos)
-            #print(query_feat[0, :, 0:2])
+
             # Prediction
             res_layer = self.prediction_heads[i](query_feat)
             res_layer['center'] = res_layer['center'] + query_pos.permute(0, 2, 1)

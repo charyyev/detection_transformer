@@ -173,7 +173,7 @@ class FocalLoss(nn.Module):
             else:
                 num_classes = pred.size(1)
                 target = F.one_hot(target, num_classes=num_classes + 1)
-                target = target.permute(0, 2, 1)
+                #target = target.permute(0, 2, 1)
                 target = target[:, :num_classes]
                 calculate_loss_func = py_sigmoid_focal_loss
 

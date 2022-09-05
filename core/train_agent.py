@@ -28,7 +28,7 @@ class TrainAgent():
         
     def build_model(self):
         learning_rate = self.config["train"]["learning_rate"]
-        weight_decay = self.config["train"]["weight_decay"]
+        #weight_decay = self.config["train"]["weight_decay"]
         lr_decay_at = self.config["train"]["lr_decay_at"]
         
         self.model = TransFusion(self.config["data"])
@@ -41,9 +41,9 @@ class TrainAgent():
             dif_learning_rate = self.config["train"]["differential_learning_rate"]
             self.optimizer = torch.optim.Adam([{'params': self.model.backbone.parameters(), 'lr': dif_learning_rate[1]},
                                              {'params': self.model.header.parameters(), 'lr': dif_learning_rate[0]}], 
-                                             lr=learning_rate, weight_decay=weight_decay)
+                                             lr=learning_rate)
         else:
-            self.optimizer = torch.optim.Adam(self.model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+            self.optimizer = torch.optim.Adam(self.model.parameters(), lr=learning_rate, weight_decay=1e-5)
 
         self.scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=lr_decay_at, gamma=0.1)
 

@@ -154,13 +154,17 @@ class SetCriterion(nn.Module):
 
     def forward(self, pred, gt_boxes, heatmap, data_types):
         label_targets, box_targets, masks = self.get_targets(pred, gt_boxes, data_types)
-        cls_loss = self.cls_loss_fn(pred[0]["heatmap"], label_targets)
-        heatmap_loss = self.heatmap_loss_fn(clip_sigmoid(pred[0]["dense_heatmap"]), heatmap, avg_factor=max(heatmap.eq(1).float().sum().item(), 1))
+
+        label_targets = label_targets.reshape(-1)
+        pred_heatmap = pred[0]["heatmap"].permute(0, 2, 1).reshape(-1, self.num_classes)
+        cls_loss = self.cls_loss_fn(pred_heatmap, label_targets)
+        
+        heatmap_loss = self.heatmap_loss_fn(pred[0]["dense_heatmap"].sigmoid(), heatmap, avg_factor=max(heatmap.eq(1).float().sum().item(), 1))
         center_loss = l1_loss(pred[0]["center"], box_targets[:, 0:2, :], masks, loss_weight=0.25)
         dim_loss = l1_loss(pred[0]["dim"], box_targets[:, 2:4, :], masks, loss_weight=0.25)
         rot_loss = l1_loss(pred[0]["rot"], box_targets[:, 4:6, :], masks, loss_weight=0.25)
         loss = cls_loss + heatmap_loss + center_loss + dim_loss + rot_loss
-
+        #loss = heatmap_loss + center_loss + dim_loss + rot_loss
         #loss =  heatmap_loss
         #return {"loss": loss}
         loss_dict = {"loss": loss, 

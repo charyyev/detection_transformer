@@ -306,6 +306,7 @@ class Vis():
         dim = pred[0]["dim"].detach()
         rot = pred[0]["rot"].detach()
         cls = torch.sigmoid(pred[0]["heatmap"].detach())
+        #print(cls)
         heatmap = torch.sigmoid(pred[0]["dense_heatmap"].detach())
         top_proposals = heatmap.view(1, -1).argsort(dim=-1, descending=True)[..., :128]
         query_heatmap_scores = pred[0]["query_heatmap_score"].detach()
@@ -315,7 +316,7 @@ class Vis():
         boxes = boxes_dict[0]["boxes"]
         scores = boxes_dict[0]["scores"]
         classes = boxes_dict[0]["labels"]
-        print(cls)
+        #print(cls)
         box_list = []
         class_list = []
         score_list = []
@@ -392,9 +393,9 @@ if __name__ == "__main__":
     with open("/home/stpc/proj/detection_transformer/configs/base.json", 'r') as f:
         config = json.load(f)
 
-    model_path = "/home/stpc/experiments/TransFusionL_overfit_23-08-2022_2/checkpoints/40epoch"
+    model_path = "/home/stpc/experiments/TransFusionL__30-08-2022_1/checkpoints/13epoch"
 
-    data_file = "/home/stpc/clean_data/list/overfit1.txt"
+    data_file = "/home/stpc/clean_data/list/mostly_nuscenes_val.txt"
     dataset = Dataset(data_file, config["data"], config["augmentation"], "val")
     data_loader = DataLoader(dataset, shuffle=False, batch_size=1, collate_fn=dataset.collate_fn)
     
